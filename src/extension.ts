@@ -1,28 +1,54 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
+import { PlannerTreeDataProviderImpl } from "./plannerTreeDataProviderImpl";
+import { FileHandlerImpl } from "./fileHandlerImpl";
+import { VSCodeEditorAdapterImpl } from "./vscode/vscodeEditorAdapterImpl";
+import { VSCodeTreeItemAdapterImpl } from "./vscode/vscodeTreeItemAdapterImpl";
+import { commandHandlerImpl } from "./commandHandlerImpl";
+import { TreeHandlerImpl } from "./treeHandlerImpl";
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
-  // Use the console to output diagnostic information (console.log) and errors (console.error)
-  // This line of code will only be executed once when your extension is activated
-  console.log('Congratulations, your extension "planner" is now active!');
-
-  // The command has been defined in the package.json file
-  // Now provide the implementation of the command with registerCommand
-  // The commandId parameter must match the command field in package.json
-  const disposable = vscode.commands.registerCommand(
-    "planner.helloWorld",
-    () => {
-      // The code you place here will be executed every time your command is executed
-      // Display a message box to the user
-      vscode.window.showInformationMessage("Hello World from planner!");
-    }
-  );
-
-  context.subscriptions.push(disposable);
+function getWorkspaceRoot(): string {
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (!workspaceFolder) {
+    throw new Error("No workspace is open. Please open a workspace first.");
+  }
+  return workspaceFolder.uri.fsPath;
 }
 
-// This method is called when your extension is deactivated
+export function activate(context: vscode.ExtensionContext) {
+  console.log("Planner extension is now active!");
+
+  try {
+    const workspaceRoot = getWorkspaceRoot();
+    const editorAdapter = new VSCodeEditorAdapterImpl();
+    const treeItemAdapter = new VSCodeTreeItemAdapterImpl();
+    const fileHandler = new FileHandlerImpl();
+    const treeHandler = new TreeHandlerImpl(workspaceRoot, fileHandler);
+    const plannerTreeDataProvider = new PlannerTreeDataProviderImpl(
+      treeHandler,
+      treeItemAdapter
+    );
+
+    const treeView = vscode.window.createTreeView("plannerFiles", {
+      treeDataProvider: plannerTreeDataProvider,
+      showCollapseAll: true,
+    });
+
+    const commandHandler = new commandHandlerImpl(
+      treeHandler,
+      plannerTreeDataProvider,
+      editorAdapter
+    );
+    const commandDisposables = commandHandler.registerCommands();
+
+    context.subscriptions.push(treeView, commandHandler, ...commandDisposables);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown error occurred";
+    vscode.window.showErrorMessage(
+      `Failed to activate Planner extension: ${message}`
+    );
+    throw error;
+  }
+}
+
 export function deactivate() {}
